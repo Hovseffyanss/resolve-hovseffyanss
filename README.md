@@ -6,6 +6,14 @@ PostgreSQL (TypeORM) + Docker** — matching PROJECT_BRIEF.md exactly.
 If your stack is C#, Python, Go, Java, etc.: port this behavior to your
 stack; the brief is the contract, this repo is a working example of it.
 
+## Live instance
+
+Deployed via CI on every push to `main`: http://98.89.2.105:3000
+
+```bash
+curl http://98.89.2.105:3000/stats
+```
+
 ## Run (Docker — recommended)
 
 ```bash
