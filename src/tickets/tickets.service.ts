@@ -8,6 +8,7 @@ import { AuditService } from '../audit/audit.service';
 import { Ticket, TicketPriority, TicketStatus } from './ticket.entity';
 import { TicketComment } from './ticket-comment.entity';
 import { newId } from '../common/ids';
+import { OffsetPaginationParams, Page } from '../common/pagination';
 
 const PRIORITIES: TicketPriority[] = ['low', 'normal', 'high', 'urgent'];
 
@@ -126,8 +127,9 @@ export class TicketsService {
 
   async findAll(
     filter: { status?: TicketStatus; priority?: TicketPriority } = {},
-  ): Promise<Ticket[]> {
-    return this.tickets.findAll(filter);
+    pagination: OffsetPaginationParams,
+  ): Promise<Page<Ticket>> {
+    return this.tickets.findAll(filter, pagination);
   }
 
   async findById(id: string): Promise<Ticket> {

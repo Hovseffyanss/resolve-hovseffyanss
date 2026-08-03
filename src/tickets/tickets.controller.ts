@@ -9,6 +9,7 @@ import {
 } from '@nestjs/common';
 import { TicketsService } from './tickets.service';
 import { TicketPriority, TicketStatus } from './ticket.entity';
+import { parseOffsetPagination } from '../common/pagination';
 
 @Controller('tickets')
 export class TicketsController {
@@ -23,8 +24,11 @@ export class TicketsController {
   findAll(
     @Query('status') status?: TicketStatus,
     @Query('priority') priority?: TicketPriority,
+    @Query('limit') limit?: string,
+    @Query('offset') offset?: string,
   ) {
-    return this.ticketsService.findAll({ status, priority });
+    const pagination = parseOffsetPagination({ limit, offset });
+    return this.ticketsService.findAll({ status, priority }, pagination);
   }
 
   @Get(':id')

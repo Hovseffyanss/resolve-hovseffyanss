@@ -158,4 +158,82 @@ describe('TicketsService', () => {
       NotFoundException,
     );
   });
+
+  describe('pagination', () => {
+    beforeEach(() => {
+      // createdAt has ms precision; a tight creation loop can otherwise
+      // collide on the same instant and make ordering ambiguous.
+      jest.useFakeTimers({
+        doNotFake: [
+          'nextTick',
+          'setImmediate',
+          'clearImmediate',
+          'setInterval',
+          'clearInterval',
+          'setTimeout',
+          'clearTimeout',
+        ],
+      });
+      jest.setSystemTime(new Date('2024-01-01T00:00:00.000Z'));
+    });
+
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    const createMany = async (count: number) => {
+      const created: Ticket[] = [];
+      for (let i = 0; i < count; i++) {
+        created.push(
+          await service.create('test', { ...valid, subject: `ticket ${i}` }),
+        );
+        jest.setSystemTime(new Date(Date.now() + 1000));
+      }
+      return created;
+    };
+
+    it('defaults to limit 50, offset 0', async () => {
+      await createMany(3);
+      const page = await service.findAll({}, { limit: 50, offset: 0 });
+      expect(page.total).toBe(3);
+      expect(page.limit).toBe(50);
+      expect(page.offset).toBe(0);
+      expect(page.items).toHaveLength(3);
+    });
+
+    it('returns the requested slice in creation order', async () => {
+      const created = await createMany(5);
+      const page = await service.findAll({}, { limit: 2, offset: 2 });
+      expect(page.items.map((t) => t.id)).toEqual([
+        created[2].id,
+        created[3].id,
+      ]);
+      expect(page.total).toBe(5);
+      expect(page.limit).toBe(2);
+      expect(page.offset).toBe(2);
+    });
+
+    it('returns an empty page when offset is past the end', async () => {
+      await createMany(3);
+      const page = await service.findAll({}, { limit: 50, offset: 10 });
+      expect(page.items).toEqual([]);
+      expect(page.total).toBe(3);
+    });
+
+    it('applies pagination after filtering', async () => {
+      await createMany(2);
+      const highPriority = await service.create('test', {
+        ...valid,
+        subject: 'urgent one',
+        priority: 'urgent',
+      });
+      const page = await service.findAll(
+        { priority: 'urgent' },
+        { limit: 50, offset: 0 },
+      );
+      expect(page.items).toHaveLength(1);
+      expect(page.items[0].id).toBe(highPriority.id);
+      expect(page.total).toBe(1);
+    });
+  });
 });
