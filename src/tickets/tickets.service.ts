@@ -16,7 +16,7 @@ export const ALLOWED_TRANSITIONS: Record<TicketStatus, TicketStatus[]> = {
   open: ['in_progress'],
   in_progress: ['waiting_customer', 'resolved'],
   waiting_customer: ['in_progress'],
-  resolved: ['closed'],
+  resolved: ['closed', 'open'],
   closed: [],
 };
 
@@ -84,15 +84,20 @@ export class TicketsService {
       );
     }
     const from = ticket.status;
+    const reopened = from === 'resolved' && to === 'open';
     ticket.status = to as TicketStatus;
     if (ticket.status === 'resolved') {
       ticket.resolvedAt = new Date().toISOString();
+    } else if (reopened) {
+      ticket.resolvedAt = null;
     }
     await this.tickets.save(ticket);
-    await this.audit.record(actor, 'ticket.status_changed', ticket.id, {
-      from,
-      to,
-    });
+    await this.audit.record(
+      actor,
+      reopened ? 'ticket.reopened' : 'ticket.status_changed',
+      ticket.id,
+      { from, to },
+    );
     return ticket;
   }
 

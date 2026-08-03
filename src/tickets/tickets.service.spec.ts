@@ -106,6 +106,27 @@ describe('TicketsService', () => {
         expect.objectContaining({ message: expect.stringContaining('open') }),
       );
     });
+
+    it('reopens a resolved ticket back to open and clears resolvedAt', async () => {
+      const t = await service.create('test', valid);
+      await service.changeStatus('test', t.id, 'open');
+      await service.changeStatus('test', t.id, 'in_progress');
+      const resolved = await service.changeStatus('test', t.id, 'resolved');
+      expect(resolved.resolvedAt).not.toBeNull();
+
+      const reopened = await service.changeStatus('test', t.id, 'open');
+      expect(reopened.status).toBe('open');
+      expect(reopened.resolvedAt).toBeNull();
+    });
+
+    it('allows a reopened ticket to walk the status machine again', async () => {
+      const t = await service.create('test', valid);
+      for (const to of ['open', 'in_progress', 'resolved', 'open']) {
+        await service.changeStatus('test', t.id, to);
+      }
+      const final = await service.changeStatus('test', t.id, 'in_progress');
+      expect(final.status).toBe('in_progress');
+    });
   });
 
   describe('comments', () => {
@@ -150,6 +171,20 @@ describe('TicketsService', () => {
       expect(entries[0].actor).toBe('narek');
       expect(entries[1].details).toEqual({ from: 'new', to: 'open' });
       expect(entries[2].actor).toBe('agent-1');
+    });
+
+    it('records reopening as a distinct action', async () => {
+      const t = await service.create('narek', valid);
+      await service.changeStatus('narek', t.id, 'open');
+      await service.changeStatus('narek', t.id, 'in_progress');
+      await service.changeStatus('narek', t.id, 'resolved');
+      await service.changeStatus('ani', t.id, 'open');
+
+      const entries = await audit.list(t.id);
+      const last = entries[entries.length - 1];
+      expect(last.action).toBe('ticket.reopened');
+      expect(last.actor).toBe('ani');
+      expect(last.details).toEqual({ from: 'resolved', to: 'open' });
     });
   });
 
