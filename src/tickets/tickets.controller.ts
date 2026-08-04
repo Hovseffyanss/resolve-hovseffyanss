@@ -53,4 +53,9 @@ export class TicketsController {
   ) {
     return this.ticketsService.addComment(actor, id, body ?? {});
   }
+
+  @Get(':id/audit')
+  listAudit(@Param('id') id: string) {
+    return this.ticketsService.listAudit(id);
+  }
 }

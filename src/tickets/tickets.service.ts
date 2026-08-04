@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { TicketsRepository } from './tickets.repository';
 import { AuditService } from '../audit/audit.service';
+import { AuditEntry } from '../audit/audit-entry.entity';
 import { Ticket, TicketPriority, TicketStatus } from './ticket.entity';
 import { TicketComment } from './ticket-comment.entity';
 import { newId } from '../common/ids';
@@ -136,5 +137,11 @@ export class TicketsService {
     const ticket = await this.tickets.findById(id);
     if (!ticket) throw new NotFoundException(`ticket ${id} not found`);
     return ticket;
+  }
+
+  async listAudit(id: string): Promise<AuditEntry[]> {
+    await this.findById(id);
+    const entries = await this.audit.list(id);
+    return entries.slice().reverse();
   }
 }

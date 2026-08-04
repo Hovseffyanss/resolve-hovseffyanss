@@ -151,6 +151,25 @@ describe('TicketsService', () => {
       expect(entries[1].details).toEqual({ from: 'new', to: 'open' });
       expect(entries[2].actor).toBe('agent-1');
     });
+
+    it('lists a ticket audit trail newest first', async () => {
+      const t = await service.create('narek', valid);
+      await service.changeStatus('narek', t.id, 'open');
+      await service.addComment('agent-1', t.id, { author: 'agent-1', body: 'hi' });
+
+      const entries = await service.listAudit(t.id);
+      expect(entries.map((e) => e.action)).toEqual([
+        'ticket.commented',
+        'ticket.status_changed',
+        'ticket.created',
+      ]);
+    });
+
+    it('404s listing audit for an unknown ticket', async () => {
+      await expect(service.listAudit('tkt_missing')).rejects.toThrow(
+        NotFoundException,
+      );
+    });
   });
 
   it('404s on unknown tickets', async () => {

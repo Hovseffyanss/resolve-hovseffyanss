@@ -55,6 +55,7 @@ both behave identically.
   transitions; illegal moves → 400 listing allowed next states)
 - `POST /tickets/:id/comments` — `{ author, body, internal }`
   (`internal: true` = agent-only note; never expose to customers)
+- `GET /tickets/:id/audit` — this ticket's audit entries, newest first
 - `GET /audit` — every mutation, with actor (from `X-Actor` header)
 - `GET /stats` — counts by status/priority + average resolution minutes
 
