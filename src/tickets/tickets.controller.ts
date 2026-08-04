@@ -53,4 +53,14 @@ export class TicketsController {
   ) {
     return this.ticketsService.addComment(actor, id, body ?? {});
   }
+
+  @Get(':id/audit')
+  listAudit(
+    @Param('id') id: string,
+    @Query('limit') limit?: string,
+    @Query('offset') offset?: string,
+  ) {
+    const pagination = parseOffsetPagination({ limit, offset });
+    return this.ticketsService.listAudit(id, pagination);
+  }
 }

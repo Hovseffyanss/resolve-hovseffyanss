@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { TicketsRepository } from './tickets.repository';
 import { AuditService } from '../audit/audit.service';
+import { AuditEntry } from '../audit/audit-entry.entity';
 import { Ticket, TicketPriority, TicketStatus } from './ticket.entity';
 import { TicketComment } from './ticket-comment.entity';
 import { newId } from '../common/ids';
@@ -136,5 +137,25 @@ export class TicketsService {
     const ticket = await this.tickets.findById(id);
     if (!ticket) throw new NotFoundException(`ticket ${id} not found`);
     return ticket;
+  }
+
+  async listAudit(
+    id: string,
+    pagination: OffsetPaginationParams,
+  ): Promise<Page<AuditEntry>> {
+    await this.findById(id);
+    // AuditService.list() only sorts ASC (src/audit/ is hook-protected,
+    // append-only, human-only changes) — reversing and slicing here until
+    // a human adds a DESC/order param to AuditService.list().
+    const newestFirst = (await this.audit.list(id)).slice().reverse();
+    return {
+      items: newestFirst.slice(
+        pagination.offset,
+        pagination.offset + pagination.limit,
+      ),
+      total: newestFirst.length,
+      limit: pagination.limit,
+      offset: pagination.offset,
+    };
   }
 }
