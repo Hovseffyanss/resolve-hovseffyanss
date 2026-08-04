@@ -55,7 +55,12 @@ export class TicketsController {
   }
 
   @Get(':id/audit')
-  listAudit(@Param('id') id: string) {
-    return this.ticketsService.listAudit(id);
+  listAudit(
+    @Param('id') id: string,
+    @Query('limit') limit?: string,
+    @Query('offset') offset?: string,
+  ) {
+    const pagination = parseOffsetPagination({ limit, offset });
+    return this.ticketsService.listAudit(id, pagination);
   }
 }

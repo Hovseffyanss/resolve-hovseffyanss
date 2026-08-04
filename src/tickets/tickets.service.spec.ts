@@ -157,18 +157,32 @@ describe('TicketsService', () => {
       await service.changeStatus('narek', t.id, 'open');
       await service.addComment('agent-1', t.id, { author: 'agent-1', body: 'hi' });
 
-      const entries = await service.listAudit(t.id);
-      expect(entries.map((e) => e.action)).toEqual([
-        'ticket.commented',
+      const page = await service.listAudit(t.id, { limit: 50, offset: 0 });
+      const seqs = page.items.map((e) => e.seq);
+      expect(seqs[0]).toBeGreaterThan(seqs[1]);
+      expect(seqs[1]).toBeGreaterThan(seqs[2]);
+      expect(page.total).toBe(3);
+    });
+
+    it('paginates the ticket audit trail', async () => {
+      const t = await service.create('narek', valid);
+      await service.changeStatus('narek', t.id, 'open');
+      await service.addComment('agent-1', t.id, { author: 'agent-1', body: 'hi' });
+
+      const page = await service.listAudit(t.id, { limit: 2, offset: 1 });
+      expect(page.items.map((e) => e.action)).toEqual([
         'ticket.status_changed',
         'ticket.created',
       ]);
+      expect(page.total).toBe(3);
+      expect(page.limit).toBe(2);
+      expect(page.offset).toBe(1);
     });
 
     it('404s listing audit for an unknown ticket', async () => {
-      await expect(service.listAudit('tkt_missing')).rejects.toThrow(
-        NotFoundException,
-      );
+      await expect(
+        service.listAudit('tkt_missing', { limit: 50, offset: 0 }),
+      ).rejects.toThrow(NotFoundException);
     });
   });
 

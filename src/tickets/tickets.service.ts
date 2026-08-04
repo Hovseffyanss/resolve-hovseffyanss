@@ -139,9 +139,23 @@ export class TicketsService {
     return ticket;
   }
 
-  async listAudit(id: string): Promise<AuditEntry[]> {
+  async listAudit(
+    id: string,
+    pagination: OffsetPaginationParams,
+  ): Promise<Page<AuditEntry>> {
     await this.findById(id);
-    const entries = await this.audit.list(id);
-    return entries.slice().reverse();
+    // AuditService.list() only sorts ASC (src/audit/ is hook-protected,
+    // append-only, human-only changes) — reversing and slicing here until
+    // a human adds a DESC/order param to AuditService.list().
+    const newestFirst = (await this.audit.list(id)).slice().reverse();
+    return {
+      items: newestFirst.slice(
+        pagination.offset,
+        pagination.offset + pagination.limit,
+      ),
+      total: newestFirst.length,
+      limit: pagination.limit,
+      offset: pagination.offset,
+    };
   }
 }
