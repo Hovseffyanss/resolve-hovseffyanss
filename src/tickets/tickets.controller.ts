@@ -1,8 +1,11 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Headers,
+  HttpCode,
+  HttpStatus,
   Param,
   Post,
   Query,
@@ -10,6 +13,10 @@ import {
 import { TicketsService } from './tickets.service';
 import { TicketPriority, TicketStatus } from './ticket.entity';
 import { parseOffsetPagination } from '../common/pagination';
+
+function resolveActor(actorHeader?: string): string {
+  return actorHeader?.trim() || 'api';
+}
 
 @Controller('tickets')
 export class TicketsController {
@@ -24,11 +31,12 @@ export class TicketsController {
   findAll(
     @Query('status') status?: TicketStatus,
     @Query('priority') priority?: TicketPriority,
+    @Query('tag') tag?: string | string[],
     @Query('limit') limit?: string,
     @Query('offset') offset?: string,
   ) {
     const pagination = parseOffsetPagination({ limit, offset });
-    return this.ticketsService.findAll({ status, priority }, pagination);
+    return this.ticketsService.findAll({ status, priority, tag }, pagination);
   }
 
   @Get(':id')
@@ -52,6 +60,43 @@ export class TicketsController {
     @Headers('x-actor') actor = 'api',
   ) {
     return this.ticketsService.addComment(actor, id, body ?? {});
+  }
+
+  @Post(':id/apply-canned-response')
+  @HttpCode(HttpStatus.CREATED)
+  applyCannedResponse(
+    @Param('id') id: string,
+    @Body() body: { cannedResponseId?: string },
+    @Headers('x-actor') actorHeader?: string,
+  ) {
+    return this.ticketsService.applyCannedResponse(
+      resolveActor(actorHeader),
+      id,
+      body?.cannedResponseId,
+    );
+  }
+
+  @Post(':id/tags')
+  @HttpCode(HttpStatus.OK)
+  addTag(
+    @Param('id') id: string,
+    @Body() body: { tag?: string },
+    @Headers('x-actor') actorHeader?: string,
+  ) {
+    return this.ticketsService.addTag(
+      resolveActor(actorHeader),
+      id,
+      body?.tag as never,
+    );
+  }
+
+  @Delete(':id/tags/:tag')
+  removeTag(
+    @Param('id') id: string,
+    @Param('tag') tag: string,
+    @Headers('x-actor') actorHeader?: string,
+  ) {
+    return this.ticketsService.removeTag(resolveActor(actorHeader), id, tag);
   }
 
   @Get(':id/audit')
