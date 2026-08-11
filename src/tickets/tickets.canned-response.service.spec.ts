@@ -243,4 +243,23 @@ describe('TicketsService — apply canned response', () => {
       expect(after.length).toBe(before.length + 1);
     });
   });
+
+  describe('AC-19', () => {
+    it('AC-19: creating a canned response writes no audit entry at all', async () => {
+      const before = await audit.list();
+      await cannedResponses.create(validCanned);
+      const after = await audit.list();
+      expect(after.length).toBe(before.length);
+    });
+
+    it('AC-19: no canned_response.created action ever reaches the audit trail', async () => {
+      await cannedResponses.create(validCanned);
+      await cannedResponses.create({ ...validCanned, title: 'Second' });
+
+      const entries = await audit.list();
+      expect(entries.map((e) => e.action)).not.toContain(
+        'canned_response.created',
+      );
+    });
+  });
 });

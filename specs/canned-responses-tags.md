@@ -31,7 +31,14 @@ existing offset pagination (`?limit=`, `?offset=`) and returning the standard
 `Page<T>` envelope `{ items, total, limit, offset }`.
 Ordering is by an auto-increment `seq` column ascending — **not** by
 `createdAt`, whose millisecond ISO strings collide under fast test execution.
-`seq` is internal and is not part of the response body.
+
+`seq` is an internal ordering key, but it **may** appear in the response body.
+This repo has no DTO or serialisation layer, and `TicketComment.seq` already
+surfaces in ticket JSON today; hiding it here alone would mean introducing a
+response-shaping mechanism used nowhere else. Stripping internal columns from
+responses is tracked as follow-up work, not part of v1.
+(Amended during review — v1.0 required `seq` to be absent, which contradicted
+existing behaviour.)
 
 **AC-4** `POST /tickets/:id/apply-canned-response` with body
 `{ cannedResponseId }` adds a **public** comment (`internal: false`) to the
@@ -190,6 +197,29 @@ The correct fix is to make `ticketId` nullable (or add a subject/entity column)
 in `src/audit/`, which is frozen and human-only. **v1 therefore does not audit
 canned-response creation (AC-19), and this is flagged for a human rather than
 worked around.** Do not attempt to satisfy this AC by any other means.
+
+---
+
+## Known debt — accepted at merge
+
+**D-1 — `TicketsRepository.tagRepo` is `@Optional()`.**
+The pre-existing `src/tickets/tickets.service.spec.ts` builds its test module
+without registering `TicketTag`, and the implementation phase was forbidden
+from editing test files. The only way to keep that suite green was to make the
+tag repository optional, with a `tags: []` fallback on reads and non-null
+assertions on writes.
+
+Cost: a mis-wired application reports every ticket as having zero tags instead
+of failing loudly, and `addTag`/`removeTag` would throw a raw `TypeError`
+rather than a clear error.
+
+Accepted deliberately rather than fixed, because the fix means editing a frozen
+test. Follow-up: register `TicketTag` in that spec's test module, then drop
+`@Optional()` and the fallback. This is a worked example of a frozen test suite
+forcing a compromise in production code — the tradeoff is real in both
+directions.
+
+**D-2 — Internal `seq` columns appear in HTTP responses.** See AC-3.
 
 ---
 

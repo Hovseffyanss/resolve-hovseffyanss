@@ -51,4 +51,8 @@ export class Ticket {
 
   @Column({ type: 'varchar', nullable: true })
   resolvedAt: string | null;
+
+  // stored in the ticket_tags table, not a column here — populated by
+  // TicketsRepository, always present and sorted alphabetically (AC-12)
+  tags: string[];
 }
