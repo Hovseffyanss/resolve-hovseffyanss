@@ -1,127 +1,64 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+"Resolve" — a support-ticket API. NestJS + PostgreSQL (TypeORM) + Docker.
+Course reference implementation for The AI-Native Engineering Playbook.
 
-## What this is
+How to run, build, and debug: `docs/running.md`.
+Working in `src/tickets/`? `src/tickets/CLAUDE.md` loads with it.
 
-"Resolve" — a course reference implementation ("Core Tickets", v0) for **The
-AI-Native Engineering Playbook**. NestJS + PostgreSQL (TypeORM) + Docker. The
-brief (`PROJECT_BRIEF.md`, if present) is the contract; this repo is a
-working example of it. Deployed via CI on every push to `main`.
+## Layering is strict, and tests depend on it
 
-## Commands
+`Controller` (thin — parses the request, calls the service) → `Service`
+(validation + business rules) → `Repository` (the only thing touching a
+TypeORM `Repository<Entity>`).
 
-```bash
-npm start           # ts-node src/main.ts, listens on :3000 (PORT env to change)
-npm run build        # tsc -> dist/
-npm run start:prod    # node dist/main.js
-npm test              # jest — 14 tests, no database needed
-npm run test:watch
-```
+Services never inject `DataSource` or a raw TypeORM repository. Always go
+through the module's own repository class. This is what lets tests swap
+Postgres for in-memory SQLite: the module graph is rebuilt with the same
+service/repository providers over `better-sqlite3`.
 
-Run a single test file: `npx jest src/tickets/tickets.service.spec.ts`
-Run by name: `npx jest -t "rejects invalid input"`
+## `src/audit/` is frozen
 
-Local dev needs Postgres for the app itself, but **not** for tests:
-```bash
-docker compose up -d db     # just the database
-npm install
-npm start
-```
+`.claude/hooks/protect-audit.js` runs as a `PreToolUse` hook and blocks any
+edit whose path contains `src/audit/`. This is enforced mechanically, not by
+convention.
 
-Full stack via Docker:
-```bash
-docker compose up -d --build     # Postgres 16 + the app
-curl localhost:3000/stats
-```
-Port 3000 busy? `APP_PORT=3300 docker compose up -d --build`. Config is
-env-driven (`cp .env.example .env`); data lives in the `pgdata` volume
-(`docker compose down -v` to reset).
+If a task needs `AuditService` to change, **say so and stop**. Do not design
+around it silently. That has already happened once — see E-1 in
+`specs/canned-responses-tags.md`.
 
-Tests run against **in-memory better-sqlite3**; runtime uses PostgreSQL.
-Entities stick to dialect-neutral column types (dates stored as ISO
-strings) so both behave identically — do not introduce Postgres-only
-column types or SQL.
+Every mutation writes exactly one audit entry:
+`AuditService.record(actor, action, ticketId, details)`, action named
+`entity.verb` (`ticket.created`, `ticket.status_changed`, `ticket.tagged`).
+`ticketId` is required and non-nullable, so anything without a ticket in
+scope cannot be audited today.
 
-## Architecture
+## Both dialects, always
 
-Standard Nest module-per-domain layout: `src/{tickets,audit,stats,health}`,
-each with its own `.module.ts`. `AppModule` (`src/app.module.ts`) wires
-`TypeOrmModule.forRoot` (Postgres, `synchronize: true` — a v0 convenience,
-not yet using migrations) plus the four feature modules.
+Tests run on in-memory better-sqlite3; production runs PostgreSQL. Entities
+use dialect-neutral column types and dates are ISO strings.
 
-**Layering is strict and load-bearing for tests:** `Controller` (thin,
-parses request → calls service) → `Service` (validation + business rules)
-→ `Repository` (the only thing touching the TypeORM `Repository<Entity>`).
-Services never inject `DataSource` or a raw TypeORM repository directly —
-always go through the module's own repository class (`TicketsRepository`,
-etc.). This is what lets tests swap Postgres for in-memory SQLite
-transparently (see `tickets.service.spec.ts`): the module graph is rebuilt
-with a `better-sqlite3` `TypeOrmModule.forRoot` and the same
-service/repository providers.
-
-**Audit trail is append-only and hook-protected.** Every mutation calls
-`AuditService.record(actor, action, ticketId, details)` with an
-`entity.verb` action name (`ticket.created`, `ticket.status_changed`,
-`ticket.commented`). `src/audit/` is frozen: `.claude/hooks/protect-audit.js`
-runs as a `PreToolUse` hook on `Edit|Write|MultiEdit` and blocks (exit 2)
-any edit whose path contains `src/audit/` — the policy is enforced
-mechanically, not just by convention. If a task requires changing
-`AuditService` itself (e.g. adding a DESC sort param), that has to be
-called out to a human rather than routed around (see the workaround
-comment in `tickets.service.ts::listAudit`, which reverses/slices in the
-service instead of touching the frozen file).
-
-**Actor identity** comes from the `X-Actor` request header (default
-`'api'`), read via `@Headers('x-actor')` in controllers and threaded
-through to `audit.record`.
-
-**Ticket status machine** (`ALLOWED_TRANSITIONS` in `tickets.service.ts`):
-```
-new → open → in_progress → resolved → closed
-              ↑        ↓
-           waiting_customer
-```
-Illegal transitions throw `BadRequestException` listing the allowed next
-states. `resolvedAt` is stamped only on the transition into `resolved`
-(used by `/stats` for average resolution time).
-
-**Pagination** is offset-based, shared via `src/common/pagination.ts`
-(`parseOffsetPagination`, `Page<T>`, `DEFAULT_PAGE_LIMIT=50`,
-`MAX_PAGE_LIMIT=200`). Endpoints returning paginated results respond with
-the same `{ items, total, limit, offset }` envelope
-(`GET /tickets`, `GET /tickets/:id/audit`). `GET /tickets/:id/audit` sorts
-newest-first by reversing the ascending list `AuditService.list()` returns
-(see above — that reversal lives outside `src/audit/` on purpose).
-
-**IDs**: entity primary keys are prefixed random strings from
-`newId(prefix)` in `src/common/ids.ts` (e.g. `tkt_xxxxxxxx`,
-`cmt_xxxxxxxx`), not auto-increment integers or plain UUIDs. Internal
-`seq` auto-increment columns exist on `TicketComment` and `AuditEntry`
-purely for stable ordering, separate from the public `id`.
-
-**Comments**: `internal: true` marks agent-only notes that must never be
-exposed to customers — preserve that distinction if touching comment
-serialization.
+No Postgres-only types or SQL. Equally: **SQLite passing is not proof.** It
+is case-insensitive about identifiers and lenient about nulls, so raw SQL
+must quote mixed-case identifiers (`tt."ticketId"`) and non-nullable columns
+must be respected even where SQLite would let them slide.
 
 ## Conventions
 
-- Validation failures throw `BadRequestException` naming the offending
-  field (e.g. `"customerEmail must be a valid email address"`) — controllers
-  stay thin and don't validate.
-- Tests exercise the real service + repository over in-memory SQLite; no
-  mocking of this repo's own code (see `tickets.service.spec.ts`,
-  `pagination.spec.ts`, `health.controller.spec.ts` for the pattern).
-- Add tests that could actually fail (cover edge cases and rejection
-  paths, not just the happy path) — see `.claude/commands/feature.md` for
-  the fuller phase-by-phase workflow (`/feature`) this repo expects for
-  new work: explore existing conventions → plan (flag ambiguous/API-level
-  decisions instead of assuming) → implement → test → summarize
-  assumptions made.
+- Validation failures throw `BadRequestException` naming the offending field
+  (`"customerEmail must be a valid email address"`). Controllers don't validate.
+- Actor identity comes from the `X-Actor` header (default `'api'`), read via
+  `@Headers('x-actor')` and threaded through to `audit.record`.
+- Entity primary keys are prefixed random strings from `newId(prefix)` in
+  `src/common/ids.ts` (`tkt_`, `cmt_`, `cr_`). Internal `seq` auto-increment
+  columns exist only for stable ordering, separate from the public `id`.
+- Pagination is offset-based and shared: `parseOffsetPagination`, `Page<T>`,
+  default 50 / max 200, in `src/common/pagination.ts`. Paginated endpoints all
+  return `{ items, total, limit, offset }`. Do not invent a second mechanism.
+- Tests exercise the real service and repository over in-memory SQLite. No
+  mocking of this repo's own code.
+- Write tests that could actually fail. A test that still passes when a
+  constant changes is not a test.
 
-## What comes next (don't build ahead)
-
-Class 3: context kit + tags/canned responses · Class 4: the SLA engine
-(spec-driven) · Class 5: review gates + the triage agent · Class 6: SLA
-watchdog + self-healing CI · Class 7: chatbot (RAG), MCP, security
-hardening · Class 8: capstone.
+`/feature` runs the full loop for new work: explore → plan → implement →
+test → summary.
