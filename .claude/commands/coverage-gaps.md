@@ -30,6 +30,14 @@ that would still pass if the underlying logic were deleted).
 
 ## 4. Report
 
+"Highest-value missing test" means a behavior the spec implies that **no
+test name touches at all** — an edge case, an interaction between two ACs,
+or a code path with zero AC-named tests exercising it. It is not a repeat
+of section 3: a test that already exists but asserts the wrong thing has
+its fix already implied by being listed there, so only nominate "fix that
+test" here if you searched and found no genuinely untested behavior
+anywhere else in the module.
+
 Output **only** this, filled in:
 
 ```
@@ -38,15 +46,20 @@ Output **only** this, filled in:
 
 ## AC with no test
 - AC-<id>: <one-line summary of what the AC requires>
-(omit this section header if none)
+(if none, delete this heading and the line above — do not print an empty
+heading)
 
 ## Tests asserting shape, not behavior
 - <file>:<line> — AC-<id> — <what it checks> — <what it should check instead>
-(omit this section header if none)
+(if none, delete this heading and the line above — do not print an empty
+heading)
 
 ## Highest-value missing test
 <one paragraph: which single test to write next, exactly what it should
-assert, and why this one beats the other gaps found above>
+assert, and why this one beats the other gaps found above — if it targets
+a behavior with zero existing test coverage, say so; if it's a fallback
+strengthening of a test already listed in section 3, say that explicitly
+and say why nothing else qualified>
 ```
 
 ## Prohibitions
