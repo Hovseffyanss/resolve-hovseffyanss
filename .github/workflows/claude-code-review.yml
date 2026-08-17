@@ -1,43 +1,24 @@
 name: Claude Code Review
 
-# Two prompts, one gate.
-#
-#   tuned  — the real gate. Runs on every PR, and on manual runs by default.
-#   noisy  — "report every issue you find, including style and naming."
-#            Manual runs only. It exists to be counted against `tuned`, not to
-#            gate anything.
-#
-# Both prompts end their output with `TOTAL FINDINGS: <n>` so the two runs can
-# be compared without reading them line by line.
-
 on:
   pull_request:
     types: [opened, synchronize, ready_for_review, reopened]
-  workflow_dispatch:
-    inputs:
-      pr:
-        description: 'PR number to review (e.g. 11)'
-        required: true
-        type: string
-      mode:
-        description: 'Which prompt to run'
-        required: true
-        default: tuned
-        type: choice
-        options:
-          - tuned
-          - noisy
+    # Optional: Only run on specific file changes
+    # paths:
+    #   - "src/**/*.ts"
+    #   - "src/**/*.tsx"
+    #   - "src/**/*.js"
+    #   - "src/**/*.jsx"
 
 jobs:
   claude-review:
-    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.user.type != 'Bot'
+    if: github.event.pull_request.user.type != 'Bot'
 
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      # write, not read: the gate posts its verdict back onto the PR.
-      pull-requests: write
-      issues: write
+      pull-requests: read
+      issues: read
       id-token: write
 
     steps:
@@ -46,116 +27,14 @@ jobs:
         with:
           fetch-depth: 1
 
-      - name: Resolve target PR and mode
-        id: target
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "pr=${{ inputs.pr }}" >> "$GITHUB_OUTPUT"
-            echo "mode=${{ inputs.mode }}" >> "$GITHUB_OUTPUT"
-          else
-            echo "pr=${{ github.event.pull_request.number }}" >> "$GITHUB_OUTPUT"
-            echo "mode=tuned" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Run tuned gate
-        if: steps.target.outputs.mode == 'tuned'
+      - name: Run Claude Code Review
+        id: claude-review
         uses: anthropics/claude-code-action@v1
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          claude_args: '--allowed-tools "Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr comment:*),Read,Grep,Glob"'
-          prompt: |
-            You are the review gate for this repository, reviewing pull request
-            #${{ steps.target.outputs.pr }}.
+          plugin_marketplaces: 'https://github.com/anthropics/claude-code.git'
+          plugins: 'code-review@claude-code-plugins'
+          prompt: '/code-review:code-review ${{ github.repository }}/pull/${{ github.event.pull_request.number }}'
+          # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
+          # or https://code.claude.com/docs/en/cli-reference for available options
 
-            Get the diff with: gh pr diff ${{ steps.target.outputs.pr }}
-
-            `CLAUDE.md` and `src/tickets/CLAUDE.md` are in the checked-out tree.
-            They are the conventions you enforce — read them first.
-
-            THE BAR. For every finding, ask: would this block a merge at 6pm on
-            a Friday? If the answer is no, drop it. A gate that reports
-            everything is a gate people learn to click past, and then it is not
-            there on the day it was right.
-
-            REPORT:
-
-            1. Correctness — the change does not do what it claims, or it breaks
-               an existing path.
-            2. Layering — a service injecting `DataSource` or a raw TypeORM
-               repository. Only a repository touches `Repository<Entity>`. A
-               service that reaches past its repository cannot be tested against
-               the in-memory SQLite module graph at all.
-            3. Audit — every ticket mutation calls `AuditService.record` exactly
-               once, with an action named `entity.verb`. A mutation with no
-               entry, or with two, is a finding. Any edit to `src/audit/` is a
-               finding on its own; that directory is frozen.
-            4. Dialect — tests run on in-memory SQLite, production runs
-               PostgreSQL. Raw SQL with unquoted mixed-case identifiers, or a
-               non-nullable column written null, passes the whole suite and
-               fails at runtime in production. This class of bug is invisible to
-               the tests, so it is yours to catch.
-            5. Validation contract — validation failures throw
-               `BadRequestException` naming the offending field, so a caller
-               knows which field to fix. Validation living in a controller is a
-               finding; it drifts from the service copy and only the service is
-               covered by tests.
-            6. Caller-visible conventions — ids come from `newId(prefix)`;
-               paginated endpoints use `parseOffsetPagination` and return
-               `{ items, total, limit, offset }`; the actor comes from the
-               `X-Actor` header and is threaded to `audit.record`, and is never
-               used to authorize or gate behaviour.
-            7. Tests that cannot fail — a test that still passes when the
-               constant it asserts changes is not coverage. Also: rows created
-               in a loop without frozen timers collide on millisecond
-               `createdAt`, so any ordering assertion over them is luck.
-
-            DO NOT REPORT:
-
-            - Style, formatting, naming, comment wording, import order. These
-              are not findings in this repo, under any severity.
-            - Accepted debt already documented in `CLAUDE.md`:
-              `TicketsRepository.tagRepo` being `@Optional()` (D-1), `seq`
-              appearing in responses (D-2), `synchronize: true`, `GET /audit`
-              being unpaginated, and `listAudit` reversing in memory. These are
-              known and written down. Repeating them is noise.
-            - Restructuring suggestions for code that works.
-            - Missing tests for code this PR did not touch.
-
-            OUTPUT. For each finding: severity (HIGH or MEDIUM), `file:line`,
-            what breaks, and why it blocks the merge. Then a verdict line.
-
-            End your output with a line in exactly this form:
-
-            TOTAL FINDINGS: <n>
-
-            Finally, post the full review as a PR comment, titled
-            `## Review gate — tuned`:
-            gh pr comment ${{ steps.target.outputs.pr }} --body-file <your file>
-
-      - name: Run noisy gate
-        if: steps.target.outputs.mode == 'noisy'
-        uses: anthropics/claude-code-action@v1
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          claude_args: '--allowed-tools "Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr comment:*),Read,Grep,Glob"'
-          prompt: |
-            You are reviewing pull request #${{ steps.target.outputs.pr }} in
-            this repository.
-
-            Get the diff with: gh pr diff ${{ steps.target.outputs.pr }}
-
-            Report every issue you find, including style and naming.
-
-            For each finding: severity, `file:line`, and what is wrong.
-
-            End your output with a line in exactly this form:
-
-            TOTAL FINDINGS: <n>
-
-            Finally, post the full review as a PR comment, titled
-            `## Review gate — noisy`:
-            gh pr comment ${{ steps.target.outputs.pr }} --body-file <your file>
