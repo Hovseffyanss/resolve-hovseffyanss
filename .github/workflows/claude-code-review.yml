@@ -75,6 +75,14 @@ jobs:
             `CLAUDE.md` and `src/tickets/CLAUDE.md` are in the checked-out tree.
             They are the conventions you enforce — read them first.
 
+            The checked-out tree is `main`, not this PR's head, and on a manual
+            run it can be many commits newer than the diff you are reviewing.
+            So a file that differs between the diff and its copy on disk is not
+            evidence of anything: it usually means `main` moved on afterwards.
+            Judge every file in the diff on its own contents. Never report a
+            regression, a downgrade, or an overwrite on the strength of a
+            comparison against the working tree.
+
             THE BAR. For every finding, ask: would this block a merge at 6pm on
             a Friday? If the answer is no, drop it. A gate that reports
             everything is a gate people learn to click past, and then it is not
@@ -127,6 +135,13 @@ jobs:
               known and written down. Repeating them is noise.
             - Restructuring suggestions for code that works.
             - Missing tests for code this PR did not touch.
+            - Races that need two concurrent requests against the same resource
+              and whose worst outcome is cosmetic — a duplicate row, a repeated
+              string in a response — with no data lost, no audit entry written
+              for a mutation that did not happen, and nothing the caller sees as
+              an error. Demoted deliberately: correct, and not worth holding a
+              Friday evening deploy for. A race that loses data or corrupts the
+              audit trail is still a finding, and still HIGH.
 
             OUTPUT. For each finding: severity (HIGH or MEDIUM), `file:line`,
             what breaks, and why it blocks the merge. Then a verdict line.
