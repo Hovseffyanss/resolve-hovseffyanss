@@ -21,6 +21,9 @@ services:
       - "${APP_PORT:-3000}:3000"
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-resolve}:${POSTGRES_PASSWORD:-resolve}@db:5432/${POSTGRES_DB:-resolve}
+      # Without this the key sits in .env on the host and the container never
+      # sees it — /replies/check then degrades closed on every request.
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
     depends_on:
       db:
         condition: service_healthy
