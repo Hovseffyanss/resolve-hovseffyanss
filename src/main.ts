@@ -1,3 +1,7 @@
+// First import, before AppModule: app.module.ts reads process.env at import
+// time. Docker Compose substitutes ${VARS} itself, so the container works
+// without this — a plain `npm start` does not, and fails silently.
+import 'dotenv/config';
 import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';

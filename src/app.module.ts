@@ -5,6 +5,7 @@ import { TicketsModule } from './tickets/tickets.module';
 import { StatsModule } from './stats/stats.module';
 import { HealthModule } from './health/health.module';
 import { CannedResponsesModule } from './canned-responses/canned-responses.module';
+import { RepliesModule } from './replies/replies.module';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { CannedResponsesModule } from './canned-responses/canned-responses.modul
     StatsModule,
     HealthModule,
     CannedResponsesModule,
+    RepliesModule,
   ],
 })
 export class AppModule {}
